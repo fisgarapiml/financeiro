@@ -6,14 +6,14 @@ FATORES_CONVERSAO = {
     'CX': 50,
     'FD': 30,
     'SC': 25
-    # Adicione outras unidades conforme sua realidade
+    # Adicione outras unidades conforme necessário
 }
 
 def ler_nfe(arquivo_xml):
     """
     Lê um arquivo XML de NF-e e extrai:
     - Dados da nota
-    - Produtos (com cálculo de custo unitário real e alíquota de IPI)
+    - Produtos com custo unitário real e IPI
     """
     ns = "{http://www.portalfiscal.inf.br/nfe}"
     try:
@@ -24,8 +24,10 @@ def ler_nfe(arquivo_xml):
         if infNFe is None:
             return {"erro": "Tag infNFe não encontrada."}
 
+        # Dados gerais da nota
         nota_info = {
             'Id': infNFe.get('Id'),
+            'Numero': infNFe.findtext(ns + 'ide/' + ns + 'nNF'),  # <- Número da NF-e
             'DataEmissao': infNFe.findtext(ns + 'ide/' + ns + 'dhEmi'),
             'CNPJ Emitente': infNFe.findtext(ns + 'emit/' + ns + 'CNPJ'),
             'Emitente': infNFe.findtext(ns + 'emit/' + ns + 'xNome'),
@@ -38,7 +40,20 @@ def ler_nfe(arquivo_xml):
             item = {"nItem": det.get("nItem")}
             prod = det.find(ns + "prod")
             imposto = det.find(ns + "imposto")
-            ipi = imposto.find(ns + "IPI/" + ns + "IPITrib") if imposto is not None else None
+
+            # Inicia as variáveis
+            ipi_percentual = 0.0
+
+            if imposto is not None:
+                ipi_node = imposto.find(f"{ns}IPI")
+                if ipi_node is not None:
+                    ipi_trib = ipi_node.find(f"{ns}IPITrib")
+                    if ipi_trib is not None:
+                        pIPI = ipi_trib.findtext(f"{ns}pIPI")
+                        try:
+                            ipi_percentual = float(pIPI.replace(",", ".")) if pIPI else 0.0
+                        except:
+                            ipi_percentual = 0.0
 
             if prod is not None:
                 item["cProd"] = prod.findtext(ns + "cProd")
@@ -51,22 +66,19 @@ def ler_nfe(arquivo_xml):
                 try:
                     unidade = item["uCom"].upper() if item["uCom"] else ""
                     fator = FATORES_CONVERSAO.get(unidade, 1)
-
                     vUnCom = float(item["vUnCom"].replace(",", ".")) if item["vUnCom"] else 0
                     custo_real = round(vUnCom / fator, 4) if fator else 0
+                    custo_com_ipi = round(custo_real * (1 + ipi_percentual / 100), 4)
 
                     item["Fator Conversao"] = fator
                     item["Custo Unitario Real"] = custo_real
+                    item["Percentual IPI"] = ipi_percentual
+                    item["Custo Unitario com IPI"] = custo_com_ipi
                 except:
                     item["Fator Conversao"] = None
                     item["Custo Unitario Real"] = None
-
-                # Extração da alíquota de IPI (%)
-                try:
-                    pIPI = ipi.findtext(ns + "pIPI") if ipi is not None else None
-                    item["Percentual IPI"] = float(pIPI.replace(",", ".")) if pIPI else 0.0
-                except:
-                    item["Percentual IPI"] = 0.0
+                    item["Percentual IPI"] = None
+                    item["Custo Unitario com IPI"] = None
 
             produtos.append(item)
 
@@ -84,9 +96,6 @@ def ler_nfe(arquivo_xml):
 
 
 def exibir_info_nfe(arquivo_xml):
-    """
-    Exibe os dados extraídos da NF-e de forma organizada.
-    """
     info = ler_nfe(arquivo_xml)
     if info:
         if "erro" in info:

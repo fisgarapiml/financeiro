@@ -1,7 +1,9 @@
 import sqlite3
+import os
 from nfe import ler_nfe
 
-DB = 'contas_apagar.db'
+# Caminho correto e absoluto do banco dentro da pasta src
+DB = os.path.join(os.path.dirname(__file__), 'contas_apagar.db')
 
 def criar_tabelas():
     conn = sqlite3.connect(DB)
@@ -11,7 +13,8 @@ def criar_tabelas():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS notas_fiscais (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chave TEXT,
+            chave TEXT UNIQUE,
+            numero TEXT,
             data_emissao TEXT,
             cnpj_emitente TEXT,
             nome_emitente TEXT,
@@ -20,7 +23,7 @@ def criar_tabelas():
         );
     ''')
 
-    # Criação da tabela de produtos da NF-e (estrutura base)
+    # Criação da tabela de produtos da nota fiscal
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS produtos_nfe (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,6 +37,7 @@ def criar_tabelas():
             fator_conversao INTEGER,
             custo_unitario_real REAL,
             percentual_ipi REAL,
+            custo_unitario_com_ipi REAL,
             FOREIGN KEY (nota_id) REFERENCES notas_fiscais(id)
         );
     ''')
@@ -41,23 +45,29 @@ def criar_tabelas():
     conn.commit()
     conn.close()
 
-def verificar_e_criar_coluna(nome_coluna, tipo_coluna):
+def verificar_e_criar_coluna(tabela, nome_coluna, tipo_coluna):
     conn = sqlite3.connect(DB)
     cursor = conn.cursor()
-
-    # Verifica se a coluna existe
-    cursor.execute("PRAGMA table_info(produtos_nfe);")
+    cursor.execute(f"PRAGMA table_info({tabela});")
     colunas = [info[1] for info in cursor.fetchall()]
 
     if nome_coluna not in colunas:
         try:
-            cursor.execute(f"ALTER TABLE produtos_nfe ADD COLUMN {nome_coluna} {tipo_coluna};")
-            print(f"✅ Coluna '{nome_coluna}' criada com sucesso.")
+            cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {nome_coluna} {tipo_coluna};")
+            print(f"✅ Coluna '{nome_coluna}' adicionada em '{tabela}'")
         except Exception as e:
-            print(f"Erro ao adicionar coluna '{nome_coluna}':", e)
+            print(f"Erro ao adicionar coluna '{nome_coluna}' em '{tabela}':", e)
 
     conn.commit()
     conn.close()
+
+def nota_ja_existe(chave_nfe):
+    conn = sqlite3.connect(DB)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM notas_fiscais WHERE chave = ?", (chave_nfe,))
+    resultado = cursor.fetchone()
+    conn.close()
+    return resultado is not None
 
 def salvar_nfe_no_banco(arquivo_xml):
     dados = ler_nfe(arquivo_xml)
@@ -65,18 +75,23 @@ def salvar_nfe_no_banco(arquivo_xml):
         print("Erro ao ler a NF-e.")
         return
 
+    chave = dados["Nota"].get("Id")
+    if nota_ja_existe(chave):
+        print("✅ Nota já cadastrada. Nenhuma ação necessária.")
+        return
+
     conn = sqlite3.connect(DB)
     cursor = conn.cursor()
 
-    # Inserir nota fiscal
     nota = dados["Nota"]
     cursor.execute('''
         INSERT INTO notas_fiscais (
-            chave, data_emissao, cnpj_emitente, nome_emitente,
+            chave, numero, data_emissao, cnpj_emitente, nome_emitente,
             cnpj_destinatario, nome_destinatario
-        ) VALUES (?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
     ''', (
         nota['Id'],
+        nota['Numero'],
         nota['DataEmissao'],
         nota['CNPJ Emitente'],
         nota['Emitente'],
@@ -86,7 +101,6 @@ def salvar_nfe_no_banco(arquivo_xml):
 
     nota_id = cursor.lastrowid
 
-    # Inserir os produtos
     for p in dados["Produtos"]:
         try:
             quantidade = float(p.get('qCom', '0').replace(",", ".")) if p.get('qCom') else 0
@@ -95,16 +109,18 @@ def salvar_nfe_no_banco(arquivo_xml):
             fator = p.get('Fator Conversao') or 1
             custo_real = p.get('Custo Unitario Real') or 0
             ipi = p.get('Percentual IPI') or 0
+            custo_com_ipi = p.get('Custo Unitario com IPI') or 0
         except:
-            quantidade = valor_unitario = valor_total = custo_real = ipi = 0
+            quantidade = valor_unitario = valor_total = custo_real = ipi = custo_com_ipi = 0
             fator = 1
 
         cursor.execute('''
             INSERT INTO produtos_nfe (
                 nota_id, codigo_produto, descricao, unidade,
                 quantidade, valor_unitario, valor_total,
-                fator_conversao, custo_unitario_real, percentual_ipi
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                fator_conversao, custo_unitario_real,
+                percentual_ipi, custo_unitario_com_ipi
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             nota_id,
             p.get('cProd'),
@@ -115,15 +131,17 @@ def salvar_nfe_no_banco(arquivo_xml):
             valor_total,
             fator,
             custo_real,
-            ipi
+            ipi,
+            custo_com_ipi
         ))
 
     conn.commit()
     conn.close()
-    print("NF-e salva no banco com sucesso!")
-
+    print("✅ NF-e salva no banco com sucesso!")
 
 if __name__ == '__main__':
     criar_tabelas()
-    verificar_e_criar_coluna("percentual_ipi", "REAL")
-    salvar_nfe_no_banco('exemplo_nfe.xml')
+    verificar_e_criar_coluna("notas_fiscais", "numero", "TEXT")
+    verificar_e_criar_coluna("produtos_nfe", "percentual_ipi", "REAL")
+    verificar_e_criar_coluna("produtos_nfe", "custo_unitario_com_ipi", "REAL")
+    salvar_nfe_no_banco('src/exemplo_nfe.xml')
