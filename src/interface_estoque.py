@@ -3,124 +3,84 @@ import sqlite3
 import pandas as pd
 import os
 from datetime import datetime
+from streamlit_extras.metric_cards import style_metric_cards
+from streamlit_extras.colored_header import colored_header
+from streamlit_extras.switch_page_button import switch_page
 
-st.set_page_config(page_title="📦 Controle de Estoque", layout="wide")
-st.title("📦 Painel de Estoque")
+st.set_page_config(page_title="📦 Painel de Estoque", layout="wide")
+st.markdown("""
+    <style>
+        .main .block-container {
+            padding-top: 2rem;
+        }
+        .css-1d391kg, .css-1v0mbdj, .st-bj {
+            background-color: #f5f5f5;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-# Caminho do banco
+# 🎨 Paleta de Cores
+AZUL_TURQUESA = "#40E0D0"
+AMARELO_ALEGRE = "#FFD700"
+ROSA_VIBRANTE = "#FF69B4"
+VERDE_LIMAO = "#32CD32"
+LARANJA = "#FFA500"
+ROXO = "#800080"
+
+# 📊 Cabeçalho Visual
+st.markdown(f"""
+    <h1 style='color: {AZUL_TURQUESA}; font-size: 36px;'>📦 Controle de Estoque</h1>
+    <p style='font-size: 18px;'>Acompanhe a saúde do estoque com informações visuais e rápidas.</p>
+""", unsafe_allow_html=True)
+
+# 🔗 Conexão com banco de dados
 db_path = os.path.join(os.path.dirname(__file__), "contas_apagar.db")
-
-# Conexão com banco de dados
 def conectar():
     return sqlite3.connect(db_path)
 
-# Criar tabelas se não existirem
-def criar_tabelas():
-    conn = conectar()
-    cursor = conn.cursor()
-
-    # Tabela de estoque
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS estoque (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            produto_id INTEGER,
-            estoque_atual REAL,
-            data_atualizacao TEXT,
-            FOREIGN KEY (produto_id) REFERENCES produtos(id)
-        );
-    ''')
-
-    # Tabela de movimentações de estoque
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS movimentacoes_estoque (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            produto_id INTEGER,
-            tipo TEXT,
-            quantidade REAL,
-            data_movimentacao TEXT,
-            origem TEXT,
-            observacoes TEXT,
-            FOREIGN KEY (produto_id) REFERENCES produtos(id)
-        );
-    ''')
-
-    conn.commit()
-    conn.close()
-
-# Carregar dados combinados de produtos + estoque
-def carregar_estoque():
+# 🔎 Consultar dados do estoque
+def consultar_estoque():
     conn = conectar()
     query = '''
-        SELECT p.id, p.nome, p.codigo, p.estoque_minimo, p.estoque_maximo, 
-               COALESCE(e.estoque_atual, 0) as estoque_atual, p.ativo
+        SELECT p.id, p.nome, p.estoque_minimo, p.estoque_maximo,
+               COALESCE(e.estoque_atual, 0) as estoque_atual,
+               p.preco_venda
         FROM produtos p
         LEFT JOIN estoque e ON p.id = e.produto_id
-        ORDER BY p.nome ASC
     '''
     df = pd.read_sql_query(query, conn)
     conn.close()
-
-    def classificar(linha):
-        estoque_atual = linha.get("estoque_atual", 0)
-        estoque_minimo = linha.get("estoque_minimo")
-        estoque_maximo = linha.get("estoque_maximo")
-
-        if linha["ativo"] == 0:
-            return "Inativo"
-        if estoque_atual == 0:
-            return "Zerado"
-        if pd.notna(estoque_minimo) and estoque_atual < estoque_minimo:
-            return "Baixo"
-        if pd.notna(estoque_maximo) and estoque_atual > estoque_maximo:
-            return "Excedente"
-        if pd.isna(estoque_minimo) and pd.isna(estoque_maximo):
-            return "Sem info"
-        return "OK"
-
-    df["status_estoque"] = df.apply(classificar, axis=1)
     return df
 
-# Inicializa tabelas
-criar_tabelas()
+# 🔢 Indicadores
+df = consultar_estoque()
+total_produtos = len(df)
+estoque_zerado = df[df["estoque_atual"] == 0].shape[0]
+estoque_baixo = df[df["estoque_atual"] < df["estoque_minimo"]].shape[0]
+custo_total = (df["estoque_atual"] * df["preco_venda"]).sum()
 
-# Carrega dados
-df = carregar_estoque()
-
-# Filtros
-st.sidebar.header("🔍 Filtros")
-status_options = df["status_estoque"].unique().tolist()
-status_filtro = st.sidebar.multiselect("Status de Estoque", status_options, default=status_options)
-mostrar_inativos = st.sidebar.checkbox("Mostrar produtos inativos", value=False)
-
-# Aplicar filtros
-df_filtrado = df[df["status_estoque"].isin(status_filtro)]
-if not mostrar_inativos:
-    df_filtrado = df_filtrado[df_filtrado["ativo"] == 1]
-
-# Exibir
-df_filtrado = df_filtrado.reset_index(drop=True)
-st.markdown(f"### Produtos em Estoque: {len(df_filtrado)}")
-st.dataframe(df_filtrado, use_container_width=True)
-
-# Métricas
-total_itens = df_filtrado["estoque_atual"].sum()
-baixo = (df_filtrado["status_estoque"] == "Baixo").sum()
-zerado = (df_filtrado["status_estoque"] == "Zerado").sum()
-excedente = (df_filtrado["status_estoque"] == "Excedente").sum()
-
+# 📊 Métricas
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("🔢 Total em Estoque", f"{total_itens:.0f}")
-col2.metric("📉 Baixo", baixo)
-col3.metric("🛑 Zerado", zerado)
-col4.metric("📦 Excedente", excedente)
+col1.metric("🧸 Produtos com Estoque Baixo", estoque_baixo)
+col2.metric("❌ Produtos Zerados", estoque_zerado)
+col3.metric("📦 Produtos no Estoque", total_produtos)
+col4.metric("💰 Custo Total Estocado", f"R$ {custo_total:,.2f}".replace(",", "."))
+
+style_metric_cards()
 
 st.markdown("---")
+colored_header("🔗 Acessos Rápidos", description="Gerencie as operações do módulo de estoque", color_name="violet-70")
 
-with st.expander("📌 Próximas funcionalidades"):
-    st.markdown("""
-    - Inventário geral e por produto
-    - Análise de giro de estoque e produtos parados
-    - Histórico de movimentações (entradas e saídas)
-    - Ajuste manual e por importação
-    - Integração com compras e vendas em tempo real
-    """)
+col_a, col_b, col_c = st.columns(3)
+with col_a:
+    if st.button("📥 Entradas de Estoque", use_container_width=True):
+        switch_page("interface_estoque_entradas")
+with col_b:
+    if st.button("📤 Saídas de Estoque", use_container_width=True):
+        switch_page("interface_estoque_saidas")
+with col_c:
+    if st.button("📋 Inventário de Estoque", use_container_width=True):
+        switch_page("interface_estoque_inventario")
+
+st.markdown("---")
+st.info("Essa é a tela principal do módulo de estoque. Em breve, mais relatórios visuais e insights serão adicionados!")
