@@ -9,7 +9,7 @@ st.title("📋 Lista de Produtos Cadastrados")
 # Conexão com o banco de dados
 @st.cache_resource
 def conectar():
-    db_path = os.path.join(os.path.dirname(__file__), "contas_apagar.db")
+    db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "contas_apagar.db"))
     return sqlite3.connect(db_path)
 
 # Carregar todos os produtos

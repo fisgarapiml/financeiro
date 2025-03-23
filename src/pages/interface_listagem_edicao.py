@@ -154,3 +154,6 @@ with col2:
 
 st.markdown("---")
 st.info("Você pode editar qualquer campo diretamente na tabela.")
+# 🔙 Botão de retorno à Home do Estoque
+st.markdown("<br>", unsafe_allow_html=True)
+st.link_button("🔙 Voltar para o Início do Estoque", url="../estoque_home")

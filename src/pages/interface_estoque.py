@@ -34,7 +34,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # 🔗 Conexão com banco de dados
-db_path = os.path.join(os.path.dirname(__file__), "contas_apagar.db")
+db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "contas_apagar.db"))
 def conectar():
     return sqlite3.connect(db_path)
 
@@ -84,3 +84,6 @@ with col_c:
 
 st.markdown("---")
 st.info("Essa é a tela principal do módulo de estoque. Em breve, mais relatórios visuais e insights serão adicionados!")
+# 🔙 Botão de retorno à Home do Estoque
+st.markdown("<br>", unsafe_allow_html=True)
+st.link_button("🔙 Voltar para o Início do Estoque", url="../estoque_home")

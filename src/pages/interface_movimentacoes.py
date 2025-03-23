@@ -2,16 +2,15 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import os
-from datetime import datetime
 import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="🔄 Movimentações de Estoque", layout="wide")
 st.title("🔄 Histórico de Movimentações de Estoque")
 
-# Caminho do banco (ajustado para a pasta correta /src)
-db_path = os.path.join(os.path.dirname(__file__), "contas_apagar.db")
+# 📦 Caminho correto do banco
+db_path = os.path.join(os.path.dirname(__file__), "..", "contas_apagar.db")
 
-# Conexão com banco de dados
+# Conexão com banco
 def conectar():
     return sqlite3.connect(db_path)
 
@@ -19,10 +18,14 @@ def conectar():
 def carregar_movimentacoes():
     conn = conectar()
     query = '''
-        SELECT m.id, m.data_movimentacao AS "Data",
-               p.nome AS "Produto", p.codigo AS "Código",
-               m.tipo AS "Tipo", m.quantidade AS "Quantidade",
-               m.origem AS "Origem", m.observacoes AS "Observações"
+        SELECT m.id, 
+               m.data_movimentacao AS "Data", 
+               p.nome AS "Produto", 
+               p.codigo AS "Código",
+               m.tipo AS "Tipo", 
+               m.quantidade AS "Quantidade", 
+               m.origem AS "Origem", 
+               m.observacoes AS "Observações"
         FROM movimentacoes_estoque m
         JOIN produtos p ON p.id = m.produto_id
         ORDER BY m.data_movimentacao DESC
@@ -40,24 +43,25 @@ try:
     if movimentacoes.empty:
         st.warning("Nenhuma movimentação encontrada no sistema.")
     else:
-        # Filtro por tipo
+        # Corrigir o parsing de data
+        movimentacoes["Data"] = pd.to_datetime(movimentacoes["Data"], format='mixed', dayfirst=True)
+
+        # Filtros
         tipos = movimentacoes["Tipo"].dropna().unique().tolist()
         tipo_filtro = st.sidebar.multiselect("Tipo de Movimentação", tipos, default=tipos)
 
-        # Filtro por produto
         produtos = movimentacoes["Produto"].dropna().unique().tolist()
         produto_filtro = st.sidebar.multiselect("Produto", produtos, default=produtos)
 
-        # Filtro por data
-        data_inicio = st.sidebar.date_input("Data inicial", value=pd.to_datetime("2024-01-01"))
-        data_fim = st.sidebar.date_input("Data final", value=pd.to_datetime("today"))
+        data_inicio = st.sidebar.date_input("Data inicial", value=movimentacoes["Data"].min().date())
+        data_fim = st.sidebar.date_input("Data final", value=movimentacoes["Data"].max().date())
 
         # Aplicar filtros
         filtro = (
-            (movimentacoes["Tipo"].isin(tipo_filtro)) &
-            (movimentacoes["Produto"].isin(produto_filtro)) &
-            (pd.to_datetime(movimentacoes["Data"], format='mixed') >= pd.to_datetime(data_inicio)) &
-            (pd.to_datetime(movimentacoes["Data"], format='mixed') <= pd.to_datetime(data_fim))
+            movimentacoes["Tipo"].isin(tipo_filtro) &
+            movimentacoes["Produto"].isin(produto_filtro) &
+            (movimentacoes["Data"] >= pd.to_datetime(data_inicio)) &
+            (movimentacoes["Data"] <= pd.to_datetime(data_fim))
         )
 
         movimentacoes_filtradas = movimentacoes[filtro]
@@ -65,7 +69,7 @@ try:
         st.markdown(f"### 📋 Movimentações Encontradas: {len(movimentacoes_filtradas)}")
         st.dataframe(movimentacoes_filtradas, use_container_width=True)
 
-        # Total por tipo
+        # Totais por tipo
         totais = movimentacoes_filtradas.groupby("Tipo")["Quantidade"].sum().reset_index()
 
         st.markdown("---")
@@ -77,7 +81,7 @@ try:
                 for _, row in totais.iterrows():
                     st.metric(label=row["Tipo"], value=int(row["Quantidade"]))
             else:
-                st.info("Nenhuma movimentação encontrada para os filtros selecionados.")
+                st.info("Nenhuma movimentação para os filtros aplicados.")
 
         with col2:
             if not totais.empty:
@@ -95,13 +99,10 @@ try:
         st.dataframe(total_produto, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Erro ao carregar movimentações: {e}")
+    st.error(f"❌ Erro ao carregar movimentações: {e}")
 
-st.markdown("---")
-with st.expander("📌 Próximas funcionalidades"):
-    st.markdown("""
-    - Lançamento manual de movimentações
-    - Importação por planilhas ou integrações
-    - Visualização em gráficos
-    - Relatórios avançados por período
-    """)
+# 📌 Execução:
+# streamlit run src/interface_estoque_dashboard.py
+# 🔙 Botão de retorno à Home do Estoque
+st.markdown("<br>", unsafe_allow_html=True)
+st.link_button("🔙 Voltar para o Início do Estoque", url="../estoque_home")

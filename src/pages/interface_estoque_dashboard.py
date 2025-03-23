@@ -15,6 +15,14 @@ ROSA = "#FF69B4"
 ROXO = "#800080"
 LARANJA = "#FFA500"
 
+# 🔍 Menu lateral funcional (usando caminho relativo à pasta 'pages/')
+st.sidebar.markdown("## 📦 Menu de Estoque")
+st.sidebar.page_link("pages/interface_movimentacoes.py", label="🔄 Movimentações")
+st.sidebar.page_link("pages/interface_estoque.py", label="📦 Controle de Estoque")
+st.sidebar.page_link("pages/interface_listagem_edicao.py", label="🛠 Edição em Massa")
+st.sidebar.page_link("pages/interface_estoque_entradas.py", label="📥 Entradas")
+st.sidebar.page_link("pages/interface_estoque_saidas.py", label="📤 Saídas")
+
 # Estilo visual customizado
 st.markdown(f"""
     <style>
@@ -47,48 +55,11 @@ st.markdown(f"""
             padding: 0.5rem 1rem;
             font-size: 16px;
         }}
-        .sidebar-menu {{
-            position: fixed;
-            top: 4.5rem;
-            left: 0;
-            width: 220px;
-            background-color: #f0f0f0;
-            padding: 1rem;
-            height: 100vh;
-            border-right: 1px solid #ddd;
-        }}
-        .sidebar-menu h3 {{
-            color: {ROXO};
-            font-size: 18px;
-            margin-bottom: 10px;
-        }}
-        .sidebar-menu a {{
-            display: block;
-            margin: 10px 0;
-            text-decoration: none;
-            color: #333;
-            font-weight: bold;
-        }}
-        .sidebar-menu a:hover {{
-            color: {AZUL};
-        }}
-        .main-content {{
-            margin-left: 240px;
-        }}
     </style>
-    <div class='sidebar-menu'>
-        <h3>📂 Menu Estoque</h3>
-        <a href='/interface_estoque_dashboard'>📊 Painel Geral</a>
-        <a href='/interface_movimentacoes'>🔄 Movimentações</a>
-        <a href='/interface_estoque'>📦 Controle de Estoque</a>
-        <a href='/interface_listagem_edicao'>🛠 Edição em Massa</a>
-        <a href='/interface_estoque_entradas'>📥 Entradas</a>
-        <a href='/interface_estoque_saidas'>📤 Saídas</a>
-    </div>
 """, unsafe_allow_html=True)
 
 # 🔐 Conexão com o banco
-db_path = os.path.join(os.path.dirname(__file__), "contas_apagar.db")
+db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "contas_apagar.db"))
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
@@ -107,10 +78,9 @@ custo_total = (produtos.merge(estoque, left_on="id", right_on="produto_id")
 produtos_inativos = produtos[produtos["ativo"] == 0].shape[0]
 
 # 📈 Cabeçalho principal
-st.markdown("<div class='main-content'>", unsafe_allow_html=True)
 st.markdown("<div class='titulo-principal'>🏦 Painel Principal de Estoque</div>", unsafe_allow_html=True)
 
-# 📅 Cards com indicadores
+# 🗕 Cards com indicadores
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -140,7 +110,11 @@ with b2:
 
 with b3:
     st.markdown("<div class='botao-acao'>", unsafe_allow_html=True)
-    st.link_button("🛠 Ajustar Estoque", url="/interface_listagem_edicao")
+    st.link_button("🚰 Ajustar Estoque", url="/interface_listagem_edicao")
     st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
+# 📌 Execução:
+# streamlit run src/interface_estoque_dashboard.py
+# 🔙 Botão de retorno à Home do Estoque
+st.markdown("<br>", unsafe_allow_html=True)
+st.link_button("🔙 Voltar para o Início do Estoque", url="../estoque_home")
