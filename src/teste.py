@@ -1,95 +1,79 @@
-import streamlit as st
 import sqlite3
-import pandas as pd
 import os
-from datetime import datetime
 
-st.set_page_config(page_title="🔄 Teste de Lançamentos", layout="wide")
-st.title("🧪 Inserir 10 Movimentações Fictícias")
+# Caminhos dos bancos
+origem = "financeiro.db"
+destino = "grupo_fisgar.db"
 
-# 🎨 Paleta de Cores
-AZUL_TURQUESA = "#40E0D0"
-AMARELO_ALEGRE = "#FFD700"
-ROSA_VIBRANTE = "#FF69B4"
-VERDE_LIMAO = "#32CD32"
-LARANJA = "#FFA500"
-ROXO = "#800080"
+# Conectar à origem
+conn_origem = sqlite3.connect(origem)
+cur_origem = conn_origem.cursor()
 
-# Estilo personalizado para feedback visual
-st.markdown(f"""
-    <style>
-        .stAlert > div {{
-            background-color: {VERDE_LIMAO}20;
-            border-left: 5px solid {VERDE_LIMAO};
-        }}
-        .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {{
-            color: {AZUL_TURQUESA};
-        }}
-        .stButton > button {{
-            background-color: {LARANJA};
-            color: white;
-            border-radius: 8px;
-            padding: 8px 16px;
-        }}
-        .stButton > button:hover {{
-            background-color: {ROXO};
-        }}
-    </style>
-""", unsafe_allow_html=True)
+# Criar destino
+conn_destino = sqlite3.connect(destino)
+cur_destino = conn_destino.cursor()
 
-# Caminho do banco
-db_path = os.path.join(os.path.dirname(__file__), "contas_apagar.db")
+# Criar tabela padronizada no banco destino
+cur_destino.execute("""
+CREATE TABLE IF NOT EXISTS contas_a_pagar (
+    id INTEGER PRIMARY KEY,
+    vencimento TEXT,
+    fornecedor TEXT,
+    valor REAL,
+    valor_pendente REAL,
+    valor_pago REAL,
+    tipo_documento TEXT,
+    plano_contas TEXT,
+    data_cadastro TEXT,
+    data_competencia TEXT,
+    data_pagamento TEXT,
+    status TEXT,
+    categoria TEXT,
+    tipo_custo TEXT,
+    comentarios TEXT
+);
+""")
 
-# Conexão
-conn = sqlite3.connect(db_path)
-cursor = conn.cursor()
+# Buscar dados da tabela antiga
+cur_origem.execute("SELECT * FROM contas_a_pagar")
+colunas = [desc[0] for desc in cur_origem.description]
+dados = cur_origem.fetchall()
 
-# Produtos fictícios
-produtos = [
-    (f"Produto Teste {i}", f"000{i:03d}") for i in range(1, 11)
-]
+# Mapeamento de nomes antigos → novos
+def mapear_linha(linha):
+    dados_dict = dict(zip(colunas, linha))
+    return (
+        dados_dict.get("codigo"),
+        dados_dict.get("vencimento"),
+        dados_dict.get("nome___raz_o_social"),
+        float(str(dados_dict.get("r__valor", "0")).replace(",", ".")),
+        float(str(dados_dict.get("r__pendente", "0")).replace(",", ".")),
+        float(str(dados_dict.get("r__pago", "0")).replace(",", ".")),
+        dados_dict.get("tipo_documento"),
+        dados_dict.get("plano_de_contas"),
+        dados_dict.get("data_cadastro"),
+        dados_dict.get("data_compet_ncia"),
+        dados_dict.get("data_pagamento"),
+        dados_dict.get("status"),
+        dados_dict.get("categorias"),
+        dados_dict.get("tipo_custo"),
+        dados_dict.get("coment_rios")
+    )
 
-# Verifica se o produto existe e insere caso não exista
-def garantir_produtos():
-    for nome, codigo in produtos:
-        cursor.execute("SELECT id FROM produtos WHERE codigo = ?", (codigo,))
-        resultado = cursor.fetchone()
-        if not resultado:
-            cursor.execute("""
-                INSERT INTO produtos (
-                    tipo, nome, codigo, marca, descricao, unidade_compra, fator_conversao,
-                    preco_venda, custo_medio, ncm, cest, cod_barras, cod_interno,
-                    fornecedor_padrao, cod_fabricante, observacoes, estoque_minimo,
-                    estoque_maximo, localizacao, tipo_produto, origem, icms_cst,
-                    pis_cst, cofins_cst, ipi_cst, cod_anp, cod_servico, ativo
-                ) VALUES (
-                    'Simples', ?, ?, 'Marca Teste', 'Descrição Teste', 'CX', 1,
-                    10.00, 5.00, '00000000', '', '', '',
-                    'Fornecedor Teste', '', '', 10, 100, 'Estoque A',
-                    'Revenda', '0', '00', '01', '01', '50', '', '', 1
-                )
-            """, (nome, codigo))
-    conn.commit()
+# Inserir no banco novo
+for linha in dados:
+    nova_linha = mapear_linha(linha)
+    cur_destino.execute("""
+        INSERT INTO contas_a_pagar (
+            id, vencimento, fornecedor, valor, valor_pendente, valor_pago,
+            tipo_documento, plano_contas, data_cadastro, data_competencia,
+            data_pagamento, status, categoria, tipo_custo, comentarios
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, nova_linha)
 
-# Inserir movimentações para os produtos
-def inserir_movimentacoes():
-    for nome, codigo in produtos:
-        cursor.execute("SELECT id FROM produtos WHERE codigo = ?", (codigo,))
-        produto_id = cursor.fetchone()
-        if produto_id:
-            cursor.execute("""
-                INSERT INTO movimentacoes_estoque (
-                    produto_id, tipo, quantidade, data_movimentacao, origem, observacoes
-                ) VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                produto_id[0], 'Entrada', 50,
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'Teste', f'Movimentação de {nome}'
-            ))
-    conn.commit()
+# Finalizar
+conn_destino.commit()
+conn_origem.close()
+conn_destino.close()
 
-# Execução
-garantir_produtos()
-inserir_movimentacoes()
-
-st.success("✅ Produtos e movimentações fictícias inseridos com sucesso!")
+print("✅ Migração concluída com sucesso! Dados transferidos para grupo_fisgar.db.")
